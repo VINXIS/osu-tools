@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using Alba.CsConsoleFormat;
@@ -40,108 +41,57 @@ namespace PerformanceCalculator.Difficulty
 
         public override void Execute()
         {
-            var results = new List<Result>();
-
+            var document = new Document();
             if (Directory.Exists(Path))
             {
                 foreach (string file in Directory.GetFiles(Path, "*.osu", SearchOption.AllDirectories))
                 {
                     var beatmap = new ProcessorWorkingBeatmap(file);
-                    results.Add(processBeatmap(beatmap));
+                    document.Children.Add(new Span(beatmap.BeatmapInfo.ToString()), "\n");
+
+                    processBeatmap(beatmap, document);
                 }
             }
             else
-                results.Add(processBeatmap(new ProcessorWorkingBeatmap(Path)));
-
-            var document = new Document();
-
-            foreach (var group in results.GroupBy(r => r.RulesetId))
             {
-                var ruleset = LegacyHelper.GetRulesetFromLegacyID(group.First().RulesetId);
+                var beatmap = new ProcessorWorkingBeatmap(Path);
+                document.Children.Add(new Span(beatmap.BeatmapInfo.ToString()), "\n");
 
-                document.Children.Add(new Span($"Ruleset: {ruleset.ShortName}"), "\n");
-
-                var grid = new Grid();
-
-                grid.Columns.Add(GridLength.Auto, GridLength.Auto);
-                grid.Children.Add(new Cell("beatmap"), new Cell("star rating"));
-
-                foreach (var attribute in group.First().AttributeData)
-                {
-                    grid.Columns.Add(GridLength.Auto);
-                    grid.Children.Add(new Cell(attribute.name));
-                }
-
-                foreach (var result in group)
-                {
-                    grid.Children.Add(new Cell(result.Beatmap), new Cell(result.Stars) { Align = Align.Right });
-                    foreach (var attribute in result.AttributeData)
-                        grid.Children.Add(new Cell(attribute.value) { Align = Align.Right });
-                }
-
-                document.Children.Add(grid);
-
-                document.Children.Add("\n");
+                processBeatmap(beatmap, document);
             }
-
             OutputDocument(document);
         }
 
-        private Result processBeatmap(WorkingBeatmap beatmap)
+        private void processBeatmap(WorkingBeatmap beatmap, Document document)
         {
             // Get the ruleset
             var ruleset = LegacyHelper.GetRulesetFromLegacyID(Ruleset ?? beatmap.BeatmapInfo.RulesetID);
             var attributes = ruleset.CreateDifficultyCalculator(beatmap).Calculate(getMods(ruleset).ToArray());
 
-            var result = new Result
-            {
-                RulesetId = ruleset.RulesetInfo.ID ?? 0,
-                Beatmap = $"{beatmap.BeatmapInfo.OnlineBeatmapID} - {beatmap.BeatmapInfo}",
-                Stars = attributes.StarRating.ToString("N2")
-            };
+            document.Children.Add(new Span("Ruleset".PadRight(15) + $": {ruleset.ShortName}"), "\n");
+            document.Children.Add(new Span("Stars".PadRight(15) + $": {attributes.StarRating.ToString(CultureInfo.InvariantCulture)}"), "\n");
 
             switch (attributes)
             {
                 case OsuDifficultyAttributes osu:
-                    result.AttributeData = new List<(string, object)>
-                    {
-                        ("aim rating", osu.AimStrain.ToString("N2")),
-                        ("speed rating", osu.SpeedStrain.ToString("N2")),
-                        ("max combo", osu.MaxCombo),
-                        ("approach rate", osu.ApproachRate.ToString("N2")),
-                        ("overall difficulty", osu.OverallDifficulty.ToString("N2"))
-                    };
-
+                    document.Children.Add(new Span("Aim".PadRight(15) + $": {osu.AimStrain.ToString(CultureInfo.InvariantCulture)}"), "\n");
+                    document.Children.Add(new Span("Speed".PadRight(15) + $": {osu.SpeedStrain.ToString(CultureInfo.InvariantCulture)}"), "\n");
+                    document.Children.Add(new Span("MaxCombo".PadRight(15) + $": {osu.MaxCombo.ToString(CultureInfo.InvariantCulture)}"), "\n");
+                    document.Children.Add(new Span("AR".PadRight(15) + $": {osu.ApproachRate.ToString(CultureInfo.InvariantCulture)}"), "\n");
+                    document.Children.Add(new Span("OD".PadRight(15) + $": {osu.OverallDifficulty.ToString(CultureInfo.InvariantCulture)}"), "\n", "\n");
                     break;
-
                 case TaikoDifficultyAttributes taiko:
-                    result.AttributeData = new List<(string, object)>
-                    {
-                        ("hit window", taiko.GreatHitWindow.ToString("N2")),
-                        ("max combo", taiko.MaxCombo)
-                    };
-
+                    document.Children.Add(new Span("HitWindow".PadRight(15) + $": {taiko.GreatHitWindow.ToString(CultureInfo.InvariantCulture)}"), "\n");
+                    document.Children.Add(new Span("MaxCombo".PadRight(15) + $": {taiko.MaxCombo.ToString(CultureInfo.InvariantCulture)}"), "\n", "\n");
                     break;
-
-                case CatchDifficultyAttributes @catch:
-                    result.AttributeData = new List<(string, object)>
-                    {
-                        ("max combo", @catch.MaxCombo),
-                        ("approach rate", @catch.ApproachRate.ToString("N2"))
-                    };
-
+                case CatchDifficultyAttributes c:
+                    document.Children.Add(new Span("MaxCombo".PadRight(15) + $": {c.MaxCombo.ToString(CultureInfo.InvariantCulture)}"), "\n");
+                    document.Children.Add(new Span("AR".PadRight(15) + $": {c.ApproachRate.ToString(CultureInfo.InvariantCulture)}"), "\n", "\n");
                     break;
-
                 case ManiaDifficultyAttributes mania:
-                    result.AttributeData = new List<(string, object)>
-                    {
-                        ("hit window", mania.GreatHitWindow.ToString("N2"))
-                    };
-
+                    document.Children.Add(new Span("HitWindow".PadRight(15) + $": {mania.GreatHitWindow.ToString(CultureInfo.InvariantCulture)}"), "\n", "\n");
                     break;
             }
-
-            return result;
         }
 
         private List<Mod> getMods(Ruleset ruleset)
@@ -151,25 +101,15 @@ namespace PerformanceCalculator.Difficulty
                 return mods;
 
             var availableMods = ruleset.GetAllMods().ToList();
-
             foreach (var modString in Mods)
             {
                 Mod newMod = availableMods.FirstOrDefault(m => string.Equals(m.Acronym, modString, StringComparison.CurrentCultureIgnoreCase));
                 if (newMod == null)
                     throw new ArgumentException($"Invalid mod provided: {modString}");
-
                 mods.Add(newMod);
             }
 
             return mods;
-        }
-
-        private struct Result
-        {
-            public int RulesetId;
-            public string Beatmap;
-            public string Stars;
-            public List<(string name, object value)> AttributeData;
         }
     }
 }
