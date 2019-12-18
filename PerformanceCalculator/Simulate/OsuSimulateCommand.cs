@@ -17,10 +17,10 @@ using osu.Game.Scoring;
 
 namespace PerformanceCalculator.Simulate
 {
-    [Command(Name = "simulate osu", Description = "Computes the performance (pp) of a simulated osu! play.")]
+    [Command(Name = "osu", Description = "Computes the performance (pp) of a simulated osu! play.")]
     public class OsuSimulateCommand : SimulateCommand
     {
-                [UsedImplicitly]
+        [UsedImplicitly]
         [Required, FileExists]
         [Argument(0, Name = "beatmap", Description = "Required. The beatmap file (.osu).")]
         public override string Beatmap { get; }
@@ -72,7 +72,7 @@ namespace PerformanceCalculator.Simulate
             }
             else
             {
-                // Let Great=6, Good=2, Meh=1, Miss=0. The total should be this.
+                /*// Let Great=6, Good=2, Meh=1, Miss=0. The total should be this.
                 var targetTotal = (int)Math.Round(accuracy * totalResultCount * 6);
 
                 // Start by assuming every non miss is a meh
@@ -84,7 +84,45 @@ namespace PerformanceCalculator.Simulate
                 // Each good increases total by 1 (good-meh=1). Covers remaining difference.
                 countGood = delta % 5;
                 // Mehs are left over. Could be negative if impossible value of amountMiss chosen
-                countMeh = totalResultCount - countGreat - countGood - countMiss;
+                countMeh = totalResultCount - countGreat - countGood - countMiss;*/
+                countGreat = totalResultCount - countMiss;
+                countGood = 0;
+                countMeh = 0;
+                double newAcc = (double)((6 * countGreat) + (2 * countGood) + countMeh) / (6 * totalResultCount);
+                if (newAcc > accuracy) {
+                    while (true) {
+                        countGreat--;
+                        countGood++;
+                        newAcc = (double)((6 * countGreat) + (2 * countGood) + countMeh) / (6 * totalResultCount);
+                        if (newAcc < accuracy) {
+                            countGood--;
+                            countMeh++;
+                            newAcc = (double)((6 * countGreat) + (2 * countGood) + countMeh) / (6 * totalResultCount);
+                            if (newAcc < accuracy) {
+                                countGreat++;
+                                countMeh--;
+                                if (countGood == 0) {
+                                    break;
+                                } else {
+                                    while (true) {
+                                        if (countGood == 0) {
+                                            break;
+                                        }
+                                        countGood--;
+                                        countMeh++;
+                                        newAcc = (double)((6 * countGreat) + (2 * countGood) + countMeh) / (6 * totalResultCount);
+                                        if (newAcc < accuracy) {
+                                            countGood++;
+                                            countMeh--;
+                                            break;
+                                        }
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
             }
 
             return new Dictionary<HitResult, int>
@@ -107,10 +145,27 @@ namespace PerformanceCalculator.Simulate
             return (double)((6 * countGreat) + (2 * countGood) + countMeh) / (6 * total);
         }
 
+        protected override double GetModifiedAccuracy(Dictionary<HitResult, int> statistics, IBeatmap beatmap)
+        {
+            int countHitCircles = beatmap.HitObjects.Count(h => h is HitCircle);
+            var countGreat = statistics[HitResult.Great];
+            var countGood = statistics[HitResult.Good];
+            var countMeh = statistics[HitResult.Meh];
+            var countMiss = statistics[HitResult.Miss];
+            var total = countGreat + countGood + countMeh + countMiss;
+
+            return (double)((countGreat - (total - countHitCircles)) * 3 + countGood * 2 + countMeh) / ((countHitCircles + 2) * 3);
+        }
+
         protected override void WritePlayInfo(ScoreInfo scoreInfo, IBeatmap beatmap)
         {
             WriteAttribute("Accuracy", (scoreInfo.Accuracy * 100).ToString(CultureInfo.InvariantCulture) + "%");
+            WriteAttribute("Modified Acc", (scoreInfo.ModifiedAccuracy * 100).ToString(CultureInfo.InvariantCulture) + "%");
+            WriteAttribute("Circles", beatmap.HitObjects.Count(h => h is HitCircle).ToString(CultureInfo.InvariantCulture));
+            WriteAttribute("Sliders", beatmap.HitObjects.Count(h => h is Slider).ToString(CultureInfo.InvariantCulture));
+            WriteAttribute("Objects", beatmap.HitObjects.Count.ToString(CultureInfo.InvariantCulture));
             WriteAttribute("Combo", FormattableString.Invariant($"{scoreInfo.MaxCombo} ({Math.Round(100.0 * scoreInfo.MaxCombo / GetMaxCombo(beatmap), 2)}%)"));
+
             foreach (var statistic in scoreInfo.Statistics)
             {
                 WriteAttribute(Enum.GetName(typeof(HitResult), statistic.Key), statistic.Value.ToString(CultureInfo.InvariantCulture));

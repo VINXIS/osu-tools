@@ -44,14 +44,16 @@ namespace PerformanceCalculator.Profile
             var ruleset = LegacyHelper.GetRulesetFromLegacyID(Ruleset ?? 0);
 
             Console.WriteLine("Getting user data...");
-            dynamic userData = getJsonFromApi($"get_user?k={Key}&u={ProfileName}&m={Ruleset}&type=username")[0];
+            dynamic userData = getJsonFromApi($"get_user?k={Key}&u={ProfileName}&m={Ruleset}")[0];
 
             Console.WriteLine("Getting user top scores...");
-            foreach (var play in getJsonFromApi($"get_user_best?k={Key}&u={ProfileName}&m={Ruleset}&limit=100&type=username"))
+
+            foreach (var play in getJsonFromApi($"get_user_best?k={Key}&u={ProfileName}&m={Ruleset}&limit=100"))
             {
                 string beatmapID = play.beatmap_id;
 
                 string cachePath = Path.Combine("cache", $"{beatmapID}.osu");
+
                 if (!File.Exists(cachePath))
                 {
                     Console.WriteLine($"Downloading {beatmapID}.osu...");
@@ -60,7 +62,7 @@ namespace PerformanceCalculator.Profile
 
                 Mod[] mods = ruleset.ConvertLegacyMods((LegacyMods)play.enabled_mods).ToArray();
 
-                var working = new ProcessorWorkingBeatmap(cachePath, (int)play.beatmap_id) { Mods = { Value = mods } };
+                var working = new ProcessorWorkingBeatmap(cachePath, (int)play.beatmap_id);
 
                 var score = new ProcessorScoreParser(working).Parse(new ScoreInfo
                 {
@@ -102,11 +104,12 @@ namespace PerformanceCalculator.Profile
             //todo: implement properly. this is pretty damn wrong.
             var playcountBonusPP = (totalLivePP - nonBonusLivePP);
             totalLocalPP += playcountBonusPP;
+            double totalDiffPP = totalLocalPP - totalLivePP;
 
             OutputDocument(new Document(
                 new Span($"User:     {userData.username}"), "\n",
                 new Span($"Live PP:  {totalLivePP:F1} (including {playcountBonusPP:F1}pp from playcount)"), "\n",
-                new Span($"Local PP: {totalLocalPP:F1}"), "\n",
+                new Span($"Local PP: {totalLocalPP:F1} ({totalDiffPP:+0.0;-0.0;-})"), "\n",
                 new Grid
                 {
                     Columns = { GridLength.Auto, GridLength.Auto, GridLength.Auto, GridLength.Auto, GridLength.Auto },
@@ -132,9 +135,11 @@ namespace PerformanceCalculator.Profile
 
         private dynamic getJsonFromApi(string request)
         {
-            var req = new JsonWebRequest<dynamic>($"{base_url}/api/{request}");
-            req.Perform();
-            return req.ResponseObject;
+            using (var req = new JsonWebRequest<dynamic>($"{base_url}/api/{request}"))
+            {
+                req.Perform();
+                return req.ResponseObject;
+            }
         }
     }
 }
