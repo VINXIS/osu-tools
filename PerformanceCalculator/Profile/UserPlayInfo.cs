@@ -2,6 +2,8 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Game.Beatmaps;
+using osu.Game.Scoring;
+using System.Collections.Generic;
 
 namespace PerformanceCalculator.Profile
 {
@@ -11,10 +13,15 @@ namespace PerformanceCalculator.Profile
     public class UserPlayInfo
     {
         public double LocalPP;
+        public double PerfectPP;
+        public double FcPP;
         public double LivePP;
 
-        public BeatmapInfo Beatmap;
+        public string Beatmap;
+        public double MapCombo;
 
         public string Mods;
+        public ScoreInfo ScoreInfo;
+        public List<KeyValuePair<string, double>> categories;
     }
 }

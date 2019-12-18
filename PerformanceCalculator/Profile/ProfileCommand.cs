@@ -14,6 +14,7 @@ using osu.Game.Beatmaps.Legacy;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Scoring;
 using osu.Game.Scoring;
+using osu.Game.Rulesets.Osu.Objects;
 
 namespace PerformanceCalculator.Profile
 {
@@ -44,10 +45,10 @@ namespace PerformanceCalculator.Profile
             var ruleset = LegacyHelper.GetRulesetFromLegacyID(Ruleset ?? 0);
 
             Console.WriteLine("Getting user data...");
-            dynamic userData = getJsonFromApi($"get_user?k={Key}&u={ProfileName}&m={Ruleset}&type=username")[0];
+            dynamic userData = getJsonFromApi($"get_user?k={Key}&u={ProfileName}&m={Ruleset}")[0];
 
             Console.WriteLine("Getting user top scores...");
-            foreach (var play in getJsonFromApi($"get_user_best?k={Key}&u={ProfileName}&m={Ruleset}&limit=100&type=username"))
+            foreach (var play in getJsonFromApi($"get_user_best?k={Key}&u={ProfileName}&m={Ruleset}&limit=100"))
             {
                 string beatmapID = play.beatmap_id;
 
@@ -60,7 +61,9 @@ namespace PerformanceCalculator.Profile
 
                 Mod[] mods = ruleset.ConvertLegacyMods((LegacyMods)play.enabled_mods).ToArray();
 
-                var working = new ProcessorWorkingBeatmap(cachePath, (int)play.beatmap_id) { Mods = { Value = mods } };
+                var working = new ProcessorWorkingBeatmap(cachePath, (int)play.beatmap_id);
+                var beatmap = working.GetPlayableBeatmap(ruleset.RulesetInfo, mods);
+                var mapCombo = beatmap.HitObjects.Count + beatmap.HitObjects.OfType<Slider>().Sum(s => s.NestedHitObjects.Count - 1);
 
                 var score = new ProcessorScoreParser(working).Parse(new ScoreInfo
                 {
@@ -78,13 +81,57 @@ namespace PerformanceCalculator.Profile
                     }
                 });
 
+                var fcScore = new ProcessorScoreParser(working).Parse(new ScoreInfo
+                {
+                    Ruleset = ruleset.RulesetInfo,
+                    MaxCombo = mapCombo,
+                    Mods = mods,
+                    Statistics = new Dictionary<HitResult, int>
+                    {
+                        { HitResult.Perfect, (int)play.countgeki },
+                        { HitResult.Great, (int)play.count300 },
+                        { HitResult.Good, (int)play.count100+(int)play.countmiss },
+                        { HitResult.Ok, (int)play.countkatu },
+                        { HitResult.Meh, (int)play.count50 },
+                        { HitResult.Miss, 0 }
+                    }
+                });
+
+
+
+                var perfectScore = new ProcessorScoreParser(working).Parse(new ScoreInfo
+                {
+                    Ruleset = ruleset.RulesetInfo,
+                    MaxCombo = mapCombo,
+                    Mods = mods,
+                    Statistics = new Dictionary<HitResult, int>
+                    {
+                        { HitResult.Perfect, 0 },
+                        { HitResult.Great, beatmap.HitObjects.Count },
+                        { HitResult.Good, 0 },
+                        { HitResult.Ok, 0 },
+                        { HitResult.Meh, 0 },
+                        { HitResult.Miss, 0 }
+                    }
+                });
+
+
+
+                var categoryAttribs = new Dictionary<string, double>();
+                string beatmapName = working.BeatmapInfo.OnlineBeatmapID + " - " + working.BeatmapInfo;
                 var thisPlay = new UserPlayInfo
                 {
-                    Beatmap = working.BeatmapInfo,
-                    LocalPP = ruleset.CreatePerformanceCalculator(working, score.ScoreInfo).Calculate(),
+                    Beatmap = beatmapName,
+                    LocalPP = ruleset.CreatePerformanceCalculator(working, score.ScoreInfo).Calculate(categoryAttribs),
+                    FcPP = ruleset.CreatePerformanceCalculator(working, fcScore.ScoreInfo).Calculate(),
+                    PerfectPP = ruleset.CreatePerformanceCalculator(working, perfectScore.ScoreInfo).Calculate(),
                     LivePP = play.pp,
-                    Mods = mods.Length > 0 ? mods.Select(m => m.Acronym).Aggregate((c, n) => $"{c}, {n}") : "None"
+                    Mods = mods.Length > 0 ? mods.Select(m => m.Acronym).Aggregate((c, n) => $"{c}, {n}") : "None",
+                    ScoreInfo = score.ScoreInfo,
+                    MapCombo = mapCombo
                 };
+                var List = categoryAttribs.ToList();
+                thisPlay.categories = List;
 
                 displayPlays.Add(thisPlay);
             }
@@ -102,39 +149,66 @@ namespace PerformanceCalculator.Profile
             //todo: implement properly. this is pretty damn wrong.
             var playcountBonusPP = (totalLivePP - nonBonusLivePP);
             totalLocalPP += playcountBonusPP;
+            double totalDiffPP = totalLocalPP - totalLivePP;
 
-            OutputDocument(new Document(
+            Document document = new Document(
                 new Span($"User:     {userData.username}"), "\n",
                 new Span($"Live PP:  {totalLivePP:F1} (including {playcountBonusPP:F1}pp from playcount)"), "\n",
-                new Span($"Local PP: {totalLocalPP:F1}"), "\n",
+                new Span($"Local PP: {totalLocalPP:F1} ({totalDiffPP:+0.0;-0.0;-})"), "\n",
                 new Grid
                 {
-                    Columns = { GridLength.Auto, GridLength.Auto, GridLength.Auto, GridLength.Auto, GridLength.Auto },
+                    Columns = {
+                        new Column {Width = GridLength.Auto, MaxWidth = 75 },
+                        GridLength.Auto, GridLength.Auto, GridLength.Auto, GridLength.Auto, GridLength.Auto, GridLength.Auto,
+                        GridLength.Auto, GridLength.Auto, GridLength.Auto, GridLength.Auto, GridLength.Auto, GridLength.Auto
+                    },
                     Children =
                     {
                         new Cell("beatmap"),
-                        new Cell("live pp"),
-                        new Cell("local pp"),
-                        new Cell("pp change"),
-                        new Cell("position change"),
+                        new Cell("live"),
+                        new Cell("local"),
+                        new Cell("FC"),
+                        new Cell("SS"),
+                        new Cell("aim"),
+                        new Cell("speed"),
+                        new Cell("acc pp"),
+                        new Cell("pp ch"),
+                        new Cell("pos ch"),
+                        new Cell("combo"),
+                        new Cell("misses"),
+                        new Cell("acc"),
+
                         localOrdered.Select(item => new[]
                         {
-                            new Cell($"{item.Beatmap.OnlineBeatmapID} - {item.Beatmap}"),
+                            new Cell($"{item.Beatmap}"),
                             new Cell($"{item.LivePP:F1}") { Align = Align.Right },
                             new Cell($"{item.LocalPP:F1}") { Align = Align.Right },
+                            new Cell($"{item.FcPP:F1}") { Align = Align.Right },
+                            new Cell($"{item.PerfectPP:F1}") { Align = Align.Right },
+                            new Cell($"{item.categories[19].Value:F1}") { Align = Align.Right },
+                            new Cell($"{item.categories[20].Value:F1}") { Align = Align.Right },
+                            new Cell($"{item.categories[21].Value:F1}") { Align = Align.Right },
                             new Cell($"{item.LocalPP - item.LivePP:F1}") { Align = Align.Right },
                             new Cell($"{liveOrdered.IndexOf(item) - localOrdered.IndexOf(item):+0;-0;-}") { Align = Align.Center },
+                            new Cell($"{item.ScoreInfo.MaxCombo}/{item.MapCombo}"){ Align = Align.Center },
+                            new Cell($"{item.ScoreInfo.Statistics[HitResult.Miss]}"){ Align = Align.Center },
+                            new Cell($"{item.ScoreInfo.Accuracy * 100:F1}%"){ Align = Align.Right },
                         })
                     }
                 }
-            ));
+            );
+            
+
+            OutputDocument(document);
         }
 
         private dynamic getJsonFromApi(string request)
         {
-            var req = new JsonWebRequest<dynamic>($"{base_url}/api/{request}");
-            req.Perform();
-            return req.ResponseObject;
+            using (var req = new JsonWebRequest<dynamic>($"{base_url}/api/{request}"))
+            {
+                req.Perform();
+                return req.ResponseObject;
+            }
         }
     }
 }
