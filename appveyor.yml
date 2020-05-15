@@ -1,26 +1,19 @@
 clone_depth: 1
 version: '{branch}-{build}'
-image: Visual Studio 2017
-configuration: Debug
+image: Visual Studio 2019
 cache:
-  - C:\ProgramData\chocolatey\bin -> appveyor.yml
-  - C:\ProgramData\chocolatey\lib -> appveyor.yml
-  - inspectcode -> appveyor.yml
-  - packages -> **\packages.config
+  - '%LOCALAPPDATA%\NuGet\v3-cache -> appveyor.yml'
 install:
-  - cmd: git submodule update --init --recursive
-  - cmd: choco install resharper-clt -y
-  - cmd: choco install nvika -y
-  - cmd: appveyor DownloadFile https://github.com/peppy/CodeFileSanity/releases/download/v0.2.5/CodeFileSanity.exe
+  - cmd: git submodule update --init --recursive # Required for submodules
 before_build:
-  - cmd: CodeFileSanity.exe
-  - cmd: nuget restore -verbosity quiet
-environment:
-  TargetFramework: net471
+  - ps: dotnet --info # Useful when version mismatch between CI and local
+  - ps: dotnet restore -v quiet
 build:
   project: osu.Tools.sln
   parallel: true
   verbosity: minimal
+  publish_nuget: false
 after_build:
-  - cmd: inspectcode --o="inspectcodereport.xml" --caches-home="inspectcode" osu.Tools.sln > NUL
-  - cmd: NVika parsereport "inspectcodereport.xml" --treatwarningsaserrors
+  - ps: dotnet tool restore
+  - ps: .\InspectCode.ps1
+test: off
