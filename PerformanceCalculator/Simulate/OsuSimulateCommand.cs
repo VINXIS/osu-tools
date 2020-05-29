@@ -145,22 +145,9 @@ namespace PerformanceCalculator.Simulate
             return (double)((6 * countGreat) + (2 * countGood) + countMeh) / (6 * total);
         }
 
-        protected override double GetModifiedAccuracy(Dictionary<HitResult, int> statistics, IBeatmap beatmap)
-        {
-            int countHitCircles = beatmap.HitObjects.Count(h => h is HitCircle);
-            var countGreat = statistics[HitResult.Great];
-            var countGood = statistics[HitResult.Good];
-            var countMeh = statistics[HitResult.Meh];
-            var countMiss = statistics[HitResult.Miss];
-            var total = countGreat + countGood + countMeh + countMiss;
-
-            return (double)((countGreat - (total - countHitCircles)) * 3 + countGood * 2 + countMeh) / ((countHitCircles + 2) * 3);
-        }
-
         protected override void WritePlayInfo(ScoreInfo scoreInfo, IBeatmap beatmap)
         {
             WriteAttribute("Accuracy", (scoreInfo.Accuracy * 100).ToString(CultureInfo.InvariantCulture) + "%");
-            WriteAttribute("Modified Acc", (scoreInfo.ModifiedAccuracy * 100).ToString(CultureInfo.InvariantCulture) + "%");
             WriteAttribute("Circles", beatmap.HitObjects.Count(h => h is HitCircle).ToString(CultureInfo.InvariantCulture));
             WriteAttribute("Sliders", beatmap.HitObjects.Count(h => h is Slider).ToString(CultureInfo.InvariantCulture));
             WriteAttribute("Objects", beatmap.HitObjects.Count.ToString(CultureInfo.InvariantCulture));

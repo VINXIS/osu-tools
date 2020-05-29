@@ -60,12 +60,10 @@ namespace PerformanceCalculator.Simulate
             var statistics = GenerateHitResults(Accuracy / 100, beatmap, Misses, Mehs, Goods);
             var score = Score;
             var accuracy = GetAccuracy(statistics);
-            var modifiedAccuracy = GetModifiedAccuracy(statistics, beatmap);
 
             var scoreInfo = new ScoreInfo
             {
                 Accuracy = accuracy,
-                ModifiedAccuracy = modifiedAccuracy,
                 MaxCombo = maxCombo,
                 Statistics = statistics,
                 Mods = mods,
@@ -116,7 +114,7 @@ namespace PerformanceCalculator.Simulate
         protected abstract Dictionary<HitResult, int> GenerateHitResults(double accuracy, IBeatmap beatmap, int countMiss, int? countMeh, int? countGood);
 
         protected virtual double GetAccuracy(Dictionary<HitResult, int> statistics) => 0;
-
+        
         protected virtual double GetModifiedAccuracy(Dictionary<HitResult, int> statistics, IBeatmap beatmap) => 0;
 
         protected void WriteAttribute(string name, string value) => Console.WriteLine($"{name.PadRight(15)}: {value}");
